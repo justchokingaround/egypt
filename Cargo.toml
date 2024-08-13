@@ -1,0 +1,16 @@
+[package]
+name = "egypt"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+yew = "^0.19"
+wasm-bindgen = "0.2"
+web-sys = { version = "0.3", features = ["File", "Blob", "Url", "HtmlAnchorElement"] }
+js-sys = "0.3"
+wasm-bindgen-futures = "0.4"
+chrono = "0.4"
+
+[[bin]]
+name = "egypt"
+path = "src/bin/egypt.rs"
