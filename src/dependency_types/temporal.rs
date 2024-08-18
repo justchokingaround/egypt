@@ -1,3 +1,4 @@
+use log::{debug, info};
 use std::cmp::Ordering;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,81 +55,139 @@ impl std::fmt::Display for DependencyType {
     }
 }
 
+/// Checks for temporal dependencies between two activities across multiple traces.
+///
+/// # Parameters
+/// - `from`: The starting activity in the dependency.
+/// - `to`: The ending activity in the dependency.
+/// - `traces`: A list of traces where each trace is an ordered sequence of activities.
+/// - `threshold`: The ratio threshold for considering the dependency direction.
+///    (for example, a threshold of 0.8 would mean that the dependency would be considered
+///    a Direct dependency if it is found in at least 80% of the traces)
+///
+/// # Returns
+/// An `Option` containing the `TemporalDependency` if a dependency is found; otherwise, `None`.
 pub fn check_temporal_dependency(
     from: &str,
     to: &str,
     traces: &[Vec<&str>],
     threshold: f64,
 ) -> Option<TemporalDependency> {
-    println!("Checking temporal dependency for {} -> {}", from, to);
+    info!("Checking temporal dependency for {} -> {}", from, to);
     let mut dependencies = Vec::new();
 
     for (i, trace) in traces.iter().enumerate() {
-        println!("Checking trace {}: {:?}", i, trace);
+        debug!("Checking trace {}: {:?}", i, trace);
         let trace_deps = check_trace_dependency(from, to, trace);
-        println!("Trace {} dependencies: {:?}", i, trace_deps);
+        debug!("Trace {} dependencies: {:?}", i, trace_deps);
         dependencies.extend(trace_deps);
     }
 
-    println!("All dependencies: {:?}", dependencies);
+    debug!("All dependencies: {:?}", dependencies);
     let result = classify_dependencies(from, to, dependencies, threshold);
-    println!("Final result: {:?}", result);
+    debug!("Final result: {:?}", result);
     result
 }
 
+/// Checks the dependencies between two activities within a single trace.
+///
+/// # Parameters
+/// - `from`: The starting activity in the dependency.
+/// - `to`: The ending activity in the dependency.
+/// - `trace`: A single trace (ordered sequence of activities).
+///
+/// # Returns
+/// A vector of tuples where each tuple contains the `DependencyType` and `Direction`.
+///
+/// Note: this is where the logic for determining the types and directions of the dependencies
+/// is implemented.
 fn check_trace_dependency(
     from: &str,
     to: &str,
     trace: &[&str],
 ) -> Vec<(DependencyType, Direction)> {
     let mut result = Vec::new();
-    let from_indices: Vec<_> = trace
-        .iter()
-        .enumerate()
-        .filter(|(_, &event)| event == from)
-        .map(|(index, _)| index)
-        .collect();
-    let to_indices: Vec<_> = trace
-        .iter()
-        .enumerate()
-        .filter(|(_, &event)| event == to)
-        .map(|(index, _)| index)
-        .collect();
+    let mut from_positions: Vec<usize> = Vec::new();
+    let mut to_positions: Vec<usize> = Vec::new();
 
-    println!("From indices: {:?}", from_indices);
-    println!("To indices: {:?}", to_indices);
-
-    for &from_index in &from_indices {
-        for &to_index in &to_indices {
-            match from_index.cmp(&to_index) {
-                Ordering::Less => {
-                    let dep_type = if to_index - from_index == 1 {
-                        DependencyType::Direct
-                    } else {
-                        DependencyType::Eventual
-                    };
-                    println!("Forward dependency: {:?} at {} -> {}", dep_type, from_index, to_index);
-                    result.push((dep_type, Direction::Forward));
-                }
-                Ordering::Greater => {
-                    let dep_type = if from_index - to_index == 1 {
-                        DependencyType::Direct
-                    } else {
-                        DependencyType::Eventual
-                    };
-                    println!("Backward dependency: {:?} at {} -> {}", dep_type, from_index, to_index);
-                    result.push((dep_type, Direction::Backward));
-                }
-                Ordering::Equal => {
-                    println!("Equal indices at {}, ignoring", from_index);
-                } // Ignore if they're at the same position
-            }
+    // get the indexes of each `from` and each `to` activities
+    for (i, activity) in trace.iter().enumerate() {
+        if activity == &from {
+            from_positions.push(i);
+        } else if activity == &to {
+            to_positions.push(i);
         }
+    }
+
+    let mut from_index = 0;
+    let mut to_index = 0;
+
+    // iterate through the `from` and `to` positions except for the last one
+    while from_index < from_positions.len() && to_index < to_positions.len() {
+        let from_pos = from_positions[from_index];
+        let to_pos = to_positions[to_index];
+
+        match from_pos.cmp(&to_pos) {
+            Ordering::Less => {
+                let dependency_type = if to_pos - from_pos == 1 {
+                    DependencyType::Direct
+                } else {
+                    DependencyType::Eventual
+                };
+                result.push((dependency_type, Direction::Forward));
+                from_index += 1;
+                to_index += 1;
+            }
+            Ordering::Greater => {
+                let dependency_type = if from_pos - to_pos == 1 {
+                    DependencyType::Direct
+                } else {
+                    DependencyType::Eventual
+                };
+                result.push((dependency_type, Direction::Backward));
+                to_index += 1;
+            }
+            Ordering::Equal => unreachable!(),
+        }
+    }
+
+    // handle remaining 'from' activities
+    while from_index < from_positions.len() {
+        if to_positions
+            .last()
+            .map_or(false, |&last_to| last_to > from_positions[from_index])
+        {
+            result.push((DependencyType::Eventual, Direction::Forward));
+        }
+        from_index += 1;
+    }
+
+    // handle remaining 'to' activities
+    while to_index < to_positions.len() {
+        if from_positions
+            .last()
+            .map_or(false, |&last_from| last_from < to_positions[to_index])
+        {
+            result.push((DependencyType::Eventual, Direction::Forward));
+        } else {
+            result.push((DependencyType::Eventual, Direction::Backward));
+        }
+        to_index += 1;
     }
 
     result
 }
 
+/// Classifies the dependencies based on their ratio to determine the overall dependency.
+///
+/// # Parameters
+/// - `from`: The starting activity in the dependency.
+/// - `to`: The ending activity in the dependency.
+/// - `dependencies`: A vector of dependencies found in the traces.
+/// - `threshold`: The ratio threshold for determining the direction of the dependency.
+///
+/// # Returns
+/// An `Option` containing the `TemporalDependency` if a dependency direction meets the threshold; otherwise, `None`.
 fn classify_dependencies(
     from: &str,
     to: &str,
@@ -136,7 +195,6 @@ fn classify_dependencies(
     threshold: f64,
 ) -> Option<TemporalDependency> {
     if dependencies.is_empty() {
-        println!("No dependencies found");
         return None;
     }
 
@@ -147,43 +205,32 @@ fn classify_dependencies(
         .count() as f64;
     let backward_count = total_count - forward_count;
 
-    println!("Total dependencies: {}", total_count);
-    println!("Forward dependencies: {}", forward_count);
-    println!("Backward dependencies: {}", backward_count);
+    let forward_ratio = forward_count / total_count;
+    let backward_ratio = backward_count / total_count;
 
-    // Calculate the ratio of the dominant direction
-    let dominant_ratio = (forward_count.max(backward_count) / total_count).max(threshold);
-
-    if dominant_ratio >= threshold && (forward_count == 0.0 || backward_count == 0.0) {
-        let direction = if forward_count > backward_count {
-            println!("Classified as Forward");
-            Direction::Forward
-        } else {
-            println!("Classified as Backward");
-            Direction::Backward
-        };
-
-        let dependency_type = if dependencies
-            .iter()
-            .all(|(dep, _)| *dep == DependencyType::Direct)
-        {
-            println!("Classified as Direct");
-            DependencyType::Direct
-        } else {
-            println!("Classified as Eventual");
-            DependencyType::Eventual
-        };
-
-        Some(TemporalDependency::new(
-            from,
-            to,
-            dependency_type,
-            direction,
-        ))
+    let direction = if forward_ratio >= threshold {
+        Direction::Forward
+    } else if backward_ratio >= threshold {
+        Direction::Backward
     } else {
-        println!("No clear direction, below threshold, or mixed directions. Classified as independent");
-        None
-    }
+        return None; // if neither direction meets the threshold, it's independent
+    };
+
+    let dependency_type = if dependencies
+        .iter()
+        .any(|(dep, _)| *dep == DependencyType::Eventual)
+    {
+        DependencyType::Eventual
+    } else {
+        DependencyType::Direct
+    };
+
+    Some(TemporalDependency::new(
+        from,
+        to,
+        dependency_type,
+        direction,
+    ))
 }
 
 #[cfg(test)]
@@ -198,7 +245,6 @@ mod tests {
             vec!["A", "C", "B", "D"],
             vec!["B", "A", "C", "D", "B"],
         ];
-        let activities = ["A", "B", "C", "D"];
         let mut pairs_and_deps = HashMap::new();
 
         pairs_and_deps.insert(
@@ -217,8 +263,11 @@ mod tests {
             ("C", "D"),
             check_temporal_dependency("C", "D", &event_names, 1.0),
         );
-        // FIXME: fix us :3
-        // pairs_and_deps.insert(("B", "D"), check_temporal_dependency("B", "D", &event_names, 1.0));
+        pairs_and_deps.insert(
+            ("B", "D"),
+            check_temporal_dependency("B", "D", &event_names, 1.0),
+        );
+        // FIXME: fix me :3
         // pairs_and_deps.insert(("B", "B"), check_temporal_dependency("B", "B", &event_names, 1.0));
 
         let expected = HashMap::from([
@@ -233,7 +282,15 @@ mod tests {
                 )),
             ),
             (("B", "C"), None),
-            (("B", "D"), None),
+            (
+                ("B", "D"),
+                Some(TemporalDependency::new(
+                    "B",
+                    "D",
+                    DependencyType::Eventual,
+                    Direction::Forward,
+                )),
+            ),
             (
                 ("C", "D"),
                 Some(TemporalDependency::new(
@@ -261,31 +318,49 @@ mod tests {
 
     #[test]
     fn test_with_loop_1() {
-        let trace = vec![vec!["A", "B", "C", "A", "C"]];
-        let activities = ["A", "B", "C"];
+        let traces = vec![vec!["A", "B", "C", "A", "C"]];
+        let trace = &traces[0];
+        let expected = vec![
+            (DependencyType::Eventual, Direction::Forward),
+            (DependencyType::Direct, Direction::Forward),
+        ];
+        assert_eq!(expected, check_trace_dependency("A", "C", trace));
+
         let expected = Some(TemporalDependency::new(
             "A",
             "C",
             DependencyType::Eventual,
             Direction::Forward,
         ));
-        let actual = check_temporal_dependency("A", "C", &trace, 1.0);
+        let actual = check_temporal_dependency("A", "C", &traces, 1.0);
         assert_eq!(expected, actual);
     }
 
     #[test]
     fn test_independence() {
-        let trace = vec![vec!["A", "B", "C", "C", "A"]];
-        let actual = check_temporal_dependency("A", "C", &trace, 1.0);
+        let traces = vec![vec!["A", "B", "C", "C", "A"]];
+        let trace = &traces[0];
+        let expected = vec![
+            (DependencyType::Eventual, Direction::Forward),
+            (DependencyType::Direct, Direction::Backward),
+        ];
+        assert_eq!(expected, check_trace_dependency("A", "C", trace));
+
+        let actual = check_temporal_dependency("A", "C", &traces, 1.0);
         assert_eq!(None, actual);
     }
 
     #[test]
     fn test_with_loop_2() {
-        let trace = vec![vec!["A", "C", "B", "C"]];
-        // should first check A and C at positions 0 and 1 (direct dep), then since there is no more A, A and C are eventual
-        // so in total it should be eventual
-        let actual = check_temporal_dependency("A", "C", &trace, 1.0);
+        let traces = vec![vec!["A", "C", "B", "C"]];
+        let trace = &traces[0];
+        let expected = vec![
+            (DependencyType::Direct, Direction::Forward),
+            (DependencyType::Eventual, Direction::Forward),
+        ];
+        assert_eq!(expected, check_trace_dependency("A", "C", trace));
+
+        let actual = check_temporal_dependency("A", "C", &traces, 1.0);
         let expected = Some(TemporalDependency::new(
             "A",
             "C",
@@ -297,11 +372,14 @@ mod tests {
 
     #[test]
     fn test_with_loop_3() {
-        let trace = vec![vec!["C", "A", "C"]];
-        // should first check A and C at positions 0 and 1 (direct dep in backward direction), then since there is no more A,
-        // we check A at 1 and C at 2 and we get a direct dep in forward direction
-        // so in total we get an independence (since at least two of the deps have opposite directions)
-        let actual = check_temporal_dependency("A", "C", &trace, 1.0);
+        let traces = vec![vec!["C", "A", "C"]];
+        let expected = vec![
+            (DependencyType::Direct, Direction::Backward),
+            (DependencyType::Direct, Direction::Forward),
+        ];
+        assert_eq!(expected, check_trace_dependency("A", "C", &traces[0]));
+
+        let actual = check_temporal_dependency("A", "C", &traces, 1.0);
         assert_eq!(None, actual);
     }
 }
