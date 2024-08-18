@@ -94,13 +94,13 @@ pub fn check_existential_dependency(
         "Threshold must be between 0 and 1"
     );
 
-    let implication = has_implication(from, to, &traces, threshold);
+    let implication = has_implication(from, to, traces, threshold);
 
-    if implication || has_implication(to, from, &traces, threshold) {
+    if implication || has_implication(to, from, traces, threshold) {
         return Some(ExistentialDependency {
             from: from.to_string(),
             to: to.to_string(),
-            dependency_type: if implication && has_implication(to, from, &traces, threshold) {
+            dependency_type: if implication && has_implication(to, from, traces, threshold) {
                 DependencyType::Equivalence
             } else {
                 DependencyType::Implication
@@ -113,7 +113,7 @@ pub fn check_existential_dependency(
         });
     }
 
-    let negated_equivalence = negated_equivalence(from, to, &traces, threshold);
+    let negated_equivalence = negated_equivalence(from, to, traces, threshold);
 
     if negated_equivalence {
         return Some(ExistentialDependency {
