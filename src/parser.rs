@@ -1,7 +1,8 @@
-use process_mining::{import_xes_file, XESImportOptions};
+use process_mining::{import_xes_file, import_xes_slice, XESImportOptions};
 use process_mining::event_log::import_xes::XESParseError;
 use process_mining::event_log::AttributeValue;
 use std::collections::{HashMap, HashSet};
+use std::error::Error;
 use chrono::{DateTime, Utc};
 
 #[derive(Debug, Clone)]
@@ -35,9 +36,19 @@ pub fn get_activities(path: &str) -> Option<HashSet<String>> {
     Some(activities)
 }
 
-pub fn parse_into_traces(path: &str) -> Result<Vec<Vec<String>>, XESParseError> {
-    let event_log = import_xes_file(path, XESImportOptions::default())?;
-    let traces = event_log.traces;
+pub fn parse_into_traces(path: Option<&str>, content: Option<&str>) -> Result<Vec<Vec<String>>, XESParseError> {
+
+    let traces = match (path, content) {
+        (Some(path), _) => {
+            let event_log = import_xes_file(path, XESImportOptions::default())?;
+            event_log.traces
+        }
+        (None, Some(content)) => {
+            let event_log = import_xes_slice(content.as_bytes(), false, XESImportOptions::default())?;
+            event_log.traces
+        }
+        _ => panic!("Either path or content must be provided, not both"),
+    };
 
     let mut result = Vec::new();
 
@@ -100,7 +111,7 @@ mod tests {
 
     #[test]
     fn test_parse_into_traces() {
-        let traces = parse_into_traces("./sample-data/exercise2.xes").unwrap();
+        let traces = parse_into_traces(Some("./sample-data/exercise2.xes"), None).unwrap();
         assert_eq!(traces.len(), 2);
         assert_eq!(traces[0].len(), 3);
         assert_eq!(traces[1].len(), 3);
