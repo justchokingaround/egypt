@@ -6,6 +6,7 @@ use dependency_types::{
 use std::collections::HashSet;
 
 pub mod dependency_types;
+pub mod parser;
 
 pub fn generate_xes(text: &str) -> String {
     let mut output = String::with_capacity(text.len() * 2); // Estimate capacity
