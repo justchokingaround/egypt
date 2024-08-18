@@ -6,6 +6,7 @@ with pkgs;
       # Rust
       rustc
       rustc-wasm32
+      rust-analyzer
       cargo
       gcc
       llvmPackages.bintools
@@ -22,4 +23,3 @@ with pkgs;
 
     '';
   }
-
