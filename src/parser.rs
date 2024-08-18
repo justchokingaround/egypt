@@ -1,7 +1,7 @@
 use process_mining::{import_xes_file, XESImportOptions};
 use process_mining::event_log::import_xes::XESParseError;
 use process_mining::event_log::AttributeValue;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use chrono::{DateTime, Utc};
 
 #[derive(Debug, Clone)]
@@ -14,6 +14,25 @@ impl Event {
     fn new(activity: String, date: DateTime<Utc>) -> Event {
         Event { activity, date }
     }
+}
+
+pub fn get_activities(path: &str) -> Option<HashSet<String>> {
+    let event_log = import_xes_file(path, XESImportOptions::default()).ok()?;
+    let traces = event_log.traces;
+    let mut activities = HashSet::new();
+
+    traces.into_iter().for_each(|t| {
+        t.events.iter().for_each(|e| {
+            e.attributes.iter().for_each(|a| {
+                if a.key == "concept:name" {
+                    if let AttributeValue::String(ref s) = a.value {
+                        activities.insert(s.clone());
+                    }
+                }
+            })
+        });
+    });
+    Some(activities)
 }
 
 pub fn parse_into_traces(path: &str) -> Result<Vec<Vec<String>>, XESParseError> {
@@ -59,23 +78,11 @@ pub fn parse_into_traces(path: &str) -> Result<Vec<Vec<String>>, XESParseError> 
     Ok(result)
 }
 
-pub fn get_activities(path: &str) -> Option<HashSet<String>> {
-    let event_log = import_xes_file(path, XESImportOptions::default()).ok()?;
-    let traces = event_log.traces;
-    let mut activities = HashSet::new();
-
-    traces.into_iter().for_each(|t| {
-        t.events.iter().for_each(|e| {
-            e.attributes.iter().for_each(|a| {
-                if a.key == "concept:name" {
-                    if let AttributeValue::String(ref s) = a.value {
-                        activities.insert(s.clone());
-                    }
-                }
-            })
-        });
-    });
-    Some(activities)
+pub fn variants_of_traces(traces: Vec<Vec<&str>>) -> HashMap<Vec<&str>, usize> {
+    traces.into_iter().fold(HashMap::new(), |mut acc, trace| {
+        *acc.entry(trace).or_insert(0) += 1;
+        acc
+    })
 }
 
 #[cfg(test)]
@@ -86,7 +93,7 @@ mod tests {
     fn test_get_activities() {
         let activities = get_activities("./sample-data/exercise2.xes").unwrap();
         assert_eq!(activities.len(), 5);
-        let actual_activities = ["A", "B", "C", "D", "E", "F"];
+        let actual_activities = ["A", "B", "C", "D", "E"];
         actual_activities.into_iter()
             .for_each(|a| assert!(activities.contains(a)));
     }
@@ -100,5 +107,23 @@ mod tests {
 
         assert_eq!(traces[0], ["B", "C", "E"]);
         assert_eq!(traces[1], ["A", "C", "D"]);
+    }
+
+    #[test]
+    fn test_variants_of_traces() {
+        let traces = vec![
+            vec!["A", "B", "C"],
+            vec!["A", "B", "C"],
+            vec!["B", "C", "D"],
+            vec!["A", "B", "C"],
+            vec!["B", "C", "D"],
+            vec!["E", "F", "G"],
+        ];
+
+        let result = variants_of_traces(traces);
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[&vec!["A", "B", "C"]], 3);
+        assert_eq!(result[&vec!["B", "C", "D"]], 2);
+        assert_eq!(result[&vec!["E", "F", "G"]], 1);
     }
 }
