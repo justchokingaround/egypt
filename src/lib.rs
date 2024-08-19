@@ -42,8 +42,8 @@ pub fn generate_xes(text: &str) -> String {
     output
 }
 
-/// # Returns: (output, full_independences, pure_existences)
-pub fn generate_adj_matrix_from_traces(traces: Vec<Vec<String>>) -> (String, usize, usize) {
+/// # Returns: (output, full_independences, pure_existences, eventual_equivalences, direct equivalences, number_of_activities)
+pub fn generate_adj_matrix_from_traces(traces: Vec<Vec<String>>) -> (String, usize, usize, usize, usize, usize) {
     let mut activities = HashSet::new();
 
     traces.iter().for_each(|trace| {
@@ -56,16 +56,18 @@ pub fn generate_adj_matrix_from_traces(traces: Vec<Vec<String>>) -> (String, usi
 }
 
 
-/// # Returns: (output, full_independences, pure_existences)
+/// # Returns: (output, full_independences, pure_existences, eventual_equivalences, direct equivalences, number_of_activities)
 pub fn generate_adj_matrix_from_activities_and_traces(
     activities: &HashSet<String>,
     traces: Vec<Vec<String>>,
-) -> (String, usize, usize) {
+) -> (String, usize, usize, usize, usize, usize) {
     let max_dependency_width = 15;
 
     let mut output = String::with_capacity(activities.len() * activities.len() * 20);
     let mut full_independences = 0;
     let mut pure_existences = 0;
+    let mut eventual_equivalences = 0;
+    let mut direct_equivalences = 0;
 
     // Header
     output.push_str(&format!("{:<15}", " "));
@@ -105,6 +107,18 @@ pub fn generate_adj_matrix_from_activities_and_traces(
                         full_independences += 1;
                     }
                 }
+
+                if let Some(existential_dependency) = existential_dependency {
+                    if existential_dependency.dependency_type == dependency_types::existential::DependencyType::Equivalence {
+                        if let Some(temporal_dependency) = temporal_dependency {
+                            match temporal_dependency.dependency_type {
+                                dependency_types::temporal::DependencyType::Eventual => eventual_equivalences += 1,
+                                dependency_types::temporal::DependencyType::Direct => direct_equivalences += 1,
+                            }
+                        }
+                    }
+                }
+
                 output.push_str(&format_dependency(&dependency));
             } else {
                 output.push_str(&format!("{:<15}", "TODO"));
@@ -113,7 +127,7 @@ pub fn generate_adj_matrix_from_activities_and_traces(
         output.push('\n');
     }
 
-    (output, full_independences, pure_existences)
+    (output, full_independences, pure_existences, eventual_equivalences, direct_equivalences, activities.len())
 }
 
 pub fn generate_adj_matrix(text: &str) -> String {

@@ -1,4 +1,7 @@
-use egypt::{generate_adj_matrix_from_traces, generate_xes, parser::{parse_into_traces, variants_of_traces}};
+use egypt::{
+    generate_adj_matrix_from_traces, generate_xes,
+    parser::{parse_into_traces, variants_of_traces},
+};
 use wasm_bindgen::{closure::Closure, JsCast, JsValue, UnwrapThrowExt};
 use web_sys::{File, FileReader, HtmlAnchorElement, HtmlInputElement, HtmlTextAreaElement};
 use yew::prelude::*;
@@ -39,31 +42,34 @@ impl Component for App {
             }
             Msg::XESImport(file_option) => {
                 if let Some(file) = file_option {
-                        let link = ctx.link().clone();
-                        let reader = FileReader::new().unwrap_throw();
-                        let reader_clone = reader.clone();
+                    let link = ctx.link().clone();
+                    let reader = FileReader::new().unwrap_throw();
+                    let reader_clone = reader.clone();
 
-                        let onload = Closure::once(move |_event: web_sys::ProgressEvent| {
-                            match reader_clone.result() {
-                                Ok(result) => {
-                                    match result.as_string() {
-                                        Some(text) => link.send_message(Msg::XESLoaded(Ok(text))),
-                                        None => link.send_message(Msg::XESLoaded(Err("Failed to convert file content to string".to_string())))
-                                    }
-                                },
-                                Err(e) => link.send_message(Msg::XESLoaded(Err(format!("Error reading file: {:?}", e))))
-                            }
-                        });
-
-                        reader.set_onload(Some(onload.as_ref().unchecked_ref()));
-
-                        // store the closure in self to keep it alive
-                        self.file_reader_closure = Some(onload);
-
-                        if let Err(_e) = reader.read_as_text(&file) {
-                            self.text = "Error reading file".to_string();
-                            return true;
+                    let onload = Closure::once(move |_event: web_sys::ProgressEvent| {
+                        match reader_clone.result() {
+                            Ok(result) => match result.as_string() {
+                                Some(text) => link.send_message(Msg::XESLoaded(Ok(text))),
+                                None => link.send_message(Msg::XESLoaded(Err(
+                                    "Failed to convert file content to string".to_string(),
+                                ))),
+                            },
+                            Err(e) => link.send_message(Msg::XESLoaded(Err(format!(
+                                "Error reading file: {:?}",
+                                e
+                            )))),
                         }
+                    });
+
+                    reader.set_onload(Some(onload.as_ref().unchecked_ref()));
+
+                    // store the closure in self to keep it alive
+                    self.file_reader_closure = Some(onload);
+
+                    if let Err(_e) = reader.read_as_text(&file) {
+                        self.text = "Error reading file".to_string();
+                        return true;
+                    }
                 }
                 false
             }
@@ -73,20 +79,45 @@ impl Component for App {
                         let traces = parse_into_traces(None, Some(&content));
                         match traces {
                             Ok(traces) => {
-                                let (adj_matrix, full_independences, pure_existences) = generate_adj_matrix_from_traces(traces.clone());
+                                let (
+                                    adj_matrix,
+                                    full_independences,
+                                    pure_existences,
+                                    eventual_equivalences,
+                                    direct_equivalences,
+                                    number_of_activities,
+                                ) = generate_adj_matrix_from_traces(traces.clone());
+                                let relations = number_of_activities * number_of_activities;
+                                let independences_per_relations =
+                                    full_independences as f64 / relations as f64;
+                                let temporal_independences_per_relations =
+                                    pure_existences as f64 / relations as f64;
                                 let traces_as_str: Vec<Vec<&str>> = traces
                                     .iter()
                                     .map(|trace| trace.iter().map(|s| s.as_str()).collect())
                                     .collect();
                                 let variants = variants_of_traces(traces_as_str);
-                                let max_variant_frequency = *variants.values().max().unwrap() as f64 / traces.len() as f64;
-                                let variants_per_traces = variants.len() as f64 / traces.len() as f64;
+                                let max_variant_frequency =
+                                    *variants.values().max().unwrap() as f64 / traces.len() as f64;
+                                let variants_per_traces =
+                                    variants.len() as f64 / traces.len() as f64;
                                 self.text = format!(
-                                    "{}\n\nFull Independences (-,-): {}\nPure Existences (-,x): {}\nMaximum frequence of variants / total #traces: {}\n#variants / total #traces: {}\n",adj_matrix,
-                                    full_independences,
-                                    pure_existences,
+                                    "{}\n\n\
+                                    #relations:                                     {:<10}\n\
+                                    #independence / #relations:                     {:<10}\n\
+                                    #temporal independence / #relations:            {:<10}\n\
+                                    max. frequency of variants / total #traces:     {:<10}\n\
+                                    #variants / total #traces:                      {:<10}\n\
+                                    #(Eventual, <=>):                               {:<10}\n\
+                                    #(Direct, <=>):                                 {:<10}\n",
+                                    adj_matrix,
+                                    relations,
+                                    independences_per_relations,
+                                    temporal_independences_per_relations,
                                     max_variant_frequency,
-                                    variants_per_traces
+                                    variants_per_traces,
+                                    eventual_equivalences,
+                                    direct_equivalences
                                 );
                             }
                             Err(e) => {
