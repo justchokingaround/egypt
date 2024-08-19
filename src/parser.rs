@@ -2,7 +2,6 @@ use process_mining::{import_xes_file, import_xes_slice, XESImportOptions};
 use process_mining::event_log::import_xes::XESParseError;
 use process_mining::event_log::AttributeValue;
 use std::collections::{HashMap, HashSet};
-use std::error::Error;
 use chrono::{DateTime, Utc};
 
 #[derive(Debug, Clone)]

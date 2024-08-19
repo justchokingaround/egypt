@@ -1,4 +1,4 @@
-use egypt::{generate_adj_matrix, generate_xes, parser::parse_into_traces};
+use egypt::{generate_adj_matrix_from_traces, generate_xes, parser::{parse_into_traces, variants_of_traces}};
 use wasm_bindgen::{closure::Closure, JsCast, JsValue, UnwrapThrowExt};
 use web_sys::{File, FileReader, HtmlAnchorElement, HtmlInputElement, HtmlTextAreaElement};
 use yew::prelude::*;
@@ -9,7 +9,7 @@ enum Msg {
     XESLoaded(Result<String, String>),
     ConvertToXES,
     DownloadXES,
-    ConvertToAdjMatrix,
+    // ConvertToAdjMatrix,
 }
 
 struct App {
@@ -38,8 +38,7 @@ impl Component for App {
                 true
             }
             Msg::XESImport(file_option) => {
-                match file_option {
-                    Some(file) => {
+                if let Some(file) = file_option {
                         let link = ctx.link().clone();
                         let reader = FileReader::new().unwrap_throw();
                         let reader_clone = reader.clone();
@@ -65,11 +64,6 @@ impl Component for App {
                             self.text = "Error reading file".to_string();
                             return true;
                         }
-                    }
-                    None => {
-                        self.text = "No file selected".to_string();
-                        return true;
-                    }
                 }
                 false
             }
@@ -79,7 +73,21 @@ impl Component for App {
                         let traces = parse_into_traces(None, Some(&content));
                         match traces {
                             Ok(traces) => {
-                                self.text = format!("{:#?}", traces);
+                                let (adj_matrix, full_independences, pure_existences) = generate_adj_matrix_from_traces(traces.clone());
+                                let traces_as_str: Vec<Vec<&str>> = traces
+                                    .iter()
+                                    .map(|trace| trace.iter().map(|s| s.as_str()).collect())
+                                    .collect();
+                                let variants = variants_of_traces(traces_as_str);
+                                let max_variant_frequency = *variants.values().max().unwrap() as f64 / traces.len() as f64;
+                                let variants_per_traces = variants.len() as f64 / traces.len() as f64;
+                                self.text = format!(
+                                    "{}\n\nFull Independences (-,-): {}\nPure Existences (-,x): {}\nMaximum frequence of variants / total #traces: {}\n#variants / total #traces: {}\n",adj_matrix,
+                                    full_independences,
+                                    pure_existences,
+                                    max_variant_frequency,
+                                    variants_per_traces
+                                );
                             }
                             Err(e) => {
                                 self.text = format!("Error parsing file: {}", e);
@@ -92,10 +100,10 @@ impl Component for App {
                 }
                 true
             }
-            Msg::ConvertToAdjMatrix => {
-                self.text = generate_adj_matrix(&self.text);
-                true
-            }
+            // Msg::ConvertToAdjMatrix => {
+            //     self.text = generate_adj_matrix(&self.text);
+            //     true
+            // }
             Msg::ConvertToXES => {
                 self.text = generate_xes(&self.text);
                 self.processed = true;
@@ -145,7 +153,7 @@ impl Component for App {
             }
         });
 
-        let onmatrix = ctx.link().callback(|_| Msg::ConvertToAdjMatrix);
+        // let onmatrix = ctx.link().callback(|_| Msg::ConvertToAdjMatrix);
         let onprocess = ctx.link().callback(|_| Msg::ConvertToXES);
         let ondownload = ctx.link().callback(|_| Msg::DownloadXES);
 
@@ -162,9 +170,9 @@ impl Component for App {
                     <label for="xes-file" style="padding: 10px 20px; font-size: 16px; margin-right: 10px; background-color: #4CAF50; color: white; cursor: pointer; border-radius: 5px;">
                         {"Import XES"}
                     </label>
-                    <button onclick={onmatrix} style="padding: 10px 20px; font-size: 16px; margin-right: 10px;">
-                        {"Convert To Adjacency Matrix"}
-                    </button>
+                    // <button onclick={onmatrix} style="padding: 10px 20px; font-size: 16px; margin-right: 10px;">
+                    //     {"Convert To Adjacency Matrix"}
+                    // </button>
                     <button onclick={onprocess} disabled={self.processed} style="padding: 10px 20px; font-size: 16px; margin-right: 10px;">
                         {"Convert To XES"}
                     </button>

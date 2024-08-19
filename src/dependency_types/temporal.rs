@@ -106,6 +106,7 @@ fn check_trace_dependency(
     to: &str,
     trace: &[&str],
 ) -> Vec<(DependencyType, Direction)> {
+
     let mut result = Vec::new();
     let mut from_positions: Vec<usize> = Vec::new();
     let mut to_positions: Vec<usize> = Vec::new();

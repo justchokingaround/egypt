@@ -42,6 +42,80 @@ pub fn generate_xes(text: &str) -> String {
     output
 }
 
+/// # Returns: (output, full_independences, pure_existences)
+pub fn generate_adj_matrix_from_traces(traces: Vec<Vec<String>>) -> (String, usize, usize) {
+    let mut activities = HashSet::new();
+
+    traces.iter().for_each(|trace| {
+        trace.iter().for_each(|activity| {
+            activities.insert(activity.to_string());
+        })
+    });
+
+    generate_adj_matrix_from_activities_and_traces(&activities, traces)
+}
+
+
+/// # Returns: (output, full_independences, pure_existences)
+pub fn generate_adj_matrix_from_activities_and_traces(
+    activities: &HashSet<String>,
+    traces: Vec<Vec<String>>,
+) -> (String, usize, usize) {
+    let max_dependency_width = 15;
+
+    let mut output = String::with_capacity(activities.len() * activities.len() * 20);
+    let mut full_independences = 0;
+    let mut pure_existences = 0;
+
+    // Header
+    output.push_str(&format!("{:<15}", " "));
+    for activity in activities {
+        output.push_str(&format!("{:<15}", activity));
+    }
+    output.push('\n');
+
+    let format_dependency = |dep: &Dependency| {
+        format!(
+            "{:<width$}",
+            format!("{}", dep),
+            width = max_dependency_width
+        )
+    };
+
+    for from in activities {
+        output.push_str(&format!("{:<15}", from));
+        for to in activities {
+            if to != from {
+                let converted_traces: Vec<Vec<&str>> = traces
+                    .iter()
+                    .map(|v| v.iter().map(|s| s.as_str()).collect())
+                    .collect();
+                let temporal_dependency = check_temporal_dependency(from, to, &converted_traces, 1.0);
+                let existential_dependency = check_existential_dependency(from, to, &converted_traces, 1.0);
+                let dependency = Dependency::new(
+                    from.to_string(),
+                    to.to_string(),
+                    temporal_dependency.clone(),
+                    existential_dependency.clone(),
+                );
+
+                if temporal_dependency.is_none() {
+                    pure_existences += 1;
+                    if existential_dependency.is_none() {
+                        full_independences += 1;
+                    }
+                }
+                output.push_str(&format_dependency(&dependency));
+            } else {
+                output.push_str(&format!("{:<15}", "TODO"));
+            }
+        }
+        output.push('\n');
+    }
+
+    (output, full_independences, pure_existences)
+}
+
 pub fn generate_adj_matrix(text: &str) -> String {
     let (activities, traces) = get_activities_and_traces(text);
     let max_dependency_width = 10;
