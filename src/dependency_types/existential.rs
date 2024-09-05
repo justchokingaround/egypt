@@ -1,4 +1,4 @@
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ExistentialDependency {
     pub from: String,
     pub to: String,
@@ -93,6 +93,32 @@ pub fn check_existential_dependency(
         (0.0..=1.0).contains(&threshold),
         "Threshold must be between 0 and 1"
     );
+
+    // if from == to {
+    //     // first check if >2
+    //     if traces.len() > 2 {
+    //         // if even: equivalence
+    //         if traces.len() % 2 == 0 {
+    //             return Some(ExistentialDependency {
+    //                 from: from.to_string(),
+    //                 to: to.to_string(),
+    //                 dependency_type: DependencyType::Equivalence,
+    //                 direction: Direction::Both,
+    //             });
+    //         }
+    //         // if odd: implication
+    //         return Some(ExistentialDependency {
+    //             from: from.to_string(),
+    //             to: to.to_string(),
+    //             dependency_type: DependencyType::Implication,
+    //             direction: Direction::Forward,
+    //         });
+    //     }
+    // }
+
+    // if from == to {
+        // TODO: instead of traces.len(), we should use the number of from activities in traces
+    // }
 
     let implication = has_implication(from, to, traces, threshold);
 
@@ -218,5 +244,32 @@ mod tests {
         assert!(has_implication("A", "D", &event_names, 0.8));
         assert!(!has_implication("A", "D", &event_names, 1.0));
     }
+
+    #[test]
+    fn test_same_activity_existential_1() {
+        let traces = vec![vec!["A", "B", "C", "C", "A"]];
+        let expected = Some(ExistentialDependency {
+            from: "A".to_string(),
+            to: "A".to_string(),
+            dependency_type: DependencyType::Equivalence,
+            direction: Direction::Forward,
+        });
+        let actual = check_existential_dependency("A", "A", &traces, 1.0);
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_same_activity_existential_2() {
+        let traces = vec![vec!["A", "B", "C", "A", "A"]];
+        let expected = Some(ExistentialDependency {
+            from: "A".to_string(),
+            to: "A".to_string(),
+            dependency_type: DependencyType::Implication,
+            direction: Direction::Forward,
+        });
+        let actual = check_existential_dependency("A", "A", &traces, 1.0);
+        assert_eq!(expected, actual);
+    }
+
     // TODO: add more tests
 }

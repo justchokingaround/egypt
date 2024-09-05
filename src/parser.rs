@@ -1,8 +1,8 @@
-use process_mining::{import_xes_file, import_xes_slice, XESImportOptions};
+use chrono::{DateTime, Utc};
 use process_mining::event_log::import_xes::XESParseError;
 use process_mining::event_log::AttributeValue;
+use process_mining::{import_xes_file, import_xes_slice, XESImportOptions};
 use std::collections::{HashMap, HashSet};
-use chrono::{DateTime, Utc};
 
 #[derive(Debug, Clone)]
 struct Event {
@@ -23,27 +23,35 @@ pub fn get_activities(path: &str) -> Option<HashSet<String>> {
 
     traces.into_iter().for_each(|t| {
         t.events.iter().for_each(|e| {
-            e.attributes.iter().for_each(|a| {
-                if a.key == "concept:name" {
-                    if let AttributeValue::String(ref s) = a.value {
-                        activities.insert(s.clone());
+            if e.attributes.iter().any(|a| {
+                a.key == "lifecycle:transition"
+                    && a.value == AttributeValue::String("complete".to_string())
+            }) {
+                e.attributes.iter().for_each(|a| {
+                    if a.key == "concept:name" {
+                        if let AttributeValue::String(ref s) = a.value {
+                            activities.insert(s.clone());
+                        }
                     }
-                }
-            })
+                })
+            }
         });
     });
     Some(activities)
 }
 
-pub fn parse_into_traces(path: Option<&str>, content: Option<&str>) -> Result<Vec<Vec<String>>, XESParseError> {
-
+pub fn parse_into_traces(
+    path: Option<&str>,
+    content: Option<&str>,
+) -> Result<Vec<Vec<String>>, XESParseError> {
     let traces = match (path, content) {
         (Some(path), _) => {
             let event_log = import_xes_file(path, XESImportOptions::default())?;
             event_log.traces
         }
         (None, Some(content)) => {
-            let event_log = import_xes_slice(content.as_bytes(), false, XESImportOptions::default())?;
+            let event_log =
+                import_xes_slice(content.as_bytes(), false, XESImportOptions::default())?;
             event_log.traces
         }
         _ => panic!("Either path or content must be provided, not both"),
@@ -58,24 +66,30 @@ pub fn parse_into_traces(path: Option<&str>, content: Option<&str>) -> Result<Ve
             let mut name = None;
             let mut date = None;
 
-            for attribute in &event.attributes {
-                match attribute.key.as_str() {
-                    "concept:name" => {
-                        if let AttributeValue::String(value) = &attribute.value {
-                            name = Some(value.clone());
+            // if event contains a key "lifecycle:transition" with value "complete", ignore otherwise
+            if event.attributes.iter().any(|a| {
+                a.key == "lifecycle:transition"
+                    && a.value == AttributeValue::String("complete".to_string())
+            }) {
+                for attribute in event.attributes {
+                    match attribute.key.as_str() {
+                        "concept:name" => {
+                            if let AttributeValue::String(value) = attribute.value {
+                                name = Some(value);
+                            }
                         }
-                    }
-                    "time:timestamp" => {
-                        if let AttributeValue::Date(value) = &attribute.value {
-                            date = Some(*value);
+                        "time:timestamp" => {
+                            if let AttributeValue::Date(value) = attribute.value {
+                                date = Some(value);
+                            }
                         }
+                        _ => continue,
                     }
-                    _ => {}
                 }
-            }
 
-            if let (Some(name), Some(date)) = (name, date) {
-                events.push(Event::new(name, date));
+                if let (Some(name), Some(date)) = (name, date) {
+                    events.push(Event::new(name, date));
+                }
             }
         }
 
@@ -104,7 +118,8 @@ mod tests {
         let activities = get_activities("./sample-data/exercise2.xes").unwrap();
         assert_eq!(activities.len(), 5);
         let actual_activities = ["A", "B", "C", "D", "E"];
-        actual_activities.into_iter()
+        actual_activities
+            .into_iter()
             .for_each(|a| assert!(activities.contains(a)));
     }
 
@@ -118,6 +133,14 @@ mod tests {
         assert_eq!(traces[0], ["B", "C", "E"]);
         assert_eq!(traces[1], ["A", "C", "D"]);
     }
+
+    // #[test]
+    // fn test_parse_into_traces_dups() {
+    //     let traces =
+    //         parse_into_traces(Some("./sample-data/Example_SemiStructured.xes"), None).unwrap();
+    //     println!("{:?}", traces);
+    //     assert_eq!(traces.len(), 2);
+    // }
 
     #[test]
     fn test_variants_of_traces() {

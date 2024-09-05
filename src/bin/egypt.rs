@@ -109,7 +109,8 @@ impl Component for App {
                                     max. frequency of variants / total #traces:     {:<10}\n\
                                     #variants / total #traces:                      {:<10}\n\
                                     #(Eventual, <=>):                               {:<10}\n\
-                                    #(Direct, <=>):                                 {:<10}\n",
+                                    #(Direct, <=>):                                 {:<10}\n\
+                                    #variants:                                      {:<10}\n",
                                     adj_matrix,
                                     relations,
                                     independences_per_relations,
@@ -117,7 +118,8 @@ impl Component for App {
                                     max_variant_frequency,
                                     variants_per_traces,
                                     eventual_equivalences,
-                                    direct_equivalences
+                                    direct_equivalences,
+                                    variants.len() as f64
                                 );
                             }
                             Err(e) => {

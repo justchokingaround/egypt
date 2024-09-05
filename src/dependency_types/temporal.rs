@@ -123,6 +123,18 @@ fn check_trace_dependency(
     let mut from_index = 0;
     let mut to_index = 0;
 
+
+    // edge case for when `from` and `to` are the same
+    if from == to {
+        // check >2
+        if from_positions.len() > 2 {
+            result.push((DependencyType::Eventual, Direction::Forward));
+        } else if from_positions[0] + 1 == from_positions[1] {
+            // check if activity in between
+            result.push((DependencyType::Direct, Direction::Forward));
+        }
+    }
+
     // iterate through the `from` and `to` positions except for the last one
     while from_index < from_positions.len() && to_index < to_positions.len() {
         let from_pos = from_positions[from_index];
@@ -382,5 +394,31 @@ mod tests {
 
         let actual = check_temporal_dependency("A", "C", &traces, 1.0);
         assert_eq!(None, actual);
+    }
+
+    #[test]
+    fn test_same_activity_temporal_1() {
+        let traces = vec![vec!["A", "A", "C", "A", "C"]];
+        let expected = Some(TemporalDependency::new(
+                "A",
+                "A",
+                DependencyType::Eventual,
+                Direction::Forward,
+        ));
+        let actual = check_temporal_dependency("A", "A", &traces, 1.0);
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_same_activity_temporal_2() {
+        let traces = vec![vec!["B", "C", "A", "A", "C"]];
+        let expected = Some(TemporalDependency::new(
+                "A",
+                "A",
+                DependencyType::Direct,
+                Direction::Forward,
+        ));
+        let actual = check_temporal_dependency("A", "A", &traces, 1.0);
+        assert_eq!(expected, actual);
     }
 }
