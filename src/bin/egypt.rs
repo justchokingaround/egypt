@@ -101,6 +101,7 @@ impl Component for App {
                                     *variants.values().max().unwrap() as f64 / traces.len() as f64;
                                 let variants_per_traces =
                                     variants.len() as f64 / traces.len() as f64;
+                                let freq_over_variants = max_variant_frequency / variants.len() as f64;
                                 self.text = format!(
                                     "{}\n\n\
                                     #relations:                                     {:<10}\n\
@@ -110,7 +111,8 @@ impl Component for App {
                                     #variants / total #traces:                      {:<10}\n\
                                     #(Eventual, <=>):                               {:<10}\n\
                                     #(Direct, <=>):                                 {:<10}\n\
-                                    #variants:                                      {:<10}\n",
+                                    #variants:                                      {:<10}\n\
+                                    max. frequency of variants / #variants:         {:<10}\n",
                                     adj_matrix,
                                     relations,
                                     independences_per_relations,
@@ -119,7 +121,8 @@ impl Component for App {
                                     variants_per_traces,
                                     eventual_equivalences,
                                     direct_equivalences,
-                                    variants.len() as f64
+                                    variants.len() as f64,
+                                    freq_over_variants
                                 );
                             }
                             Err(e) => {
