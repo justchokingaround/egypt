@@ -16,27 +16,71 @@ impl Event {
     }
 }
 
+// Helper function to extract relevant attributes
+fn extract_event_attributes(
+    attributes: &[process_mining::event_log::Attribute],
+) -> (Option<String>, Option<DateTime<Utc>>) {
+    let mut name = None;
+    let mut date = None;
+
+    for attribute in attributes {
+        match attribute.key.as_str() {
+            "concept:name" => {
+                if let AttributeValue::String(value) = &attribute.value {
+                    name = Some(value.clone());
+                }
+            }
+            "time:timestamp" => {
+                if let AttributeValue::Date(value) = &attribute.value {
+                    date = Some(*value);
+                }
+            }
+            _ => continue,
+        }
+    }
+
+    (name, date)
+}
+
+
 pub fn get_activities(path: &str) -> Option<HashSet<String>> {
     let event_log = import_xes_file(path, XESImportOptions::default()).ok()?;
     let traces = event_log.traces;
     let mut activities = HashSet::new();
 
-    traces.into_iter().for_each(|t| {
-        t.events.iter().for_each(|e| {
-            if e.attributes.iter().any(|a| {
+    for trace in traces {
+        // Check if there is a lifecycle:transition with value "complete" in the trace
+        let has_complete = trace.events.iter().any(|event| {
+            event.attributes.iter().any(|a| {
+                a.key == "lifecycle:transition"
+                    && a.value == AttributeValue::String("complete".to_string())
+            })
+        });
+
+        for event in trace.events {
+            let mut name = None;
+
+            // If "complete" is present, we only consider events with "complete" transition
+            if !has_complete || event.attributes.iter().any(|a| {
                 a.key == "lifecycle:transition"
                     && a.value == AttributeValue::String("complete".to_string())
             }) {
-                e.attributes.iter().for_each(|a| {
-                    if a.key == "concept:name" {
-                        if let AttributeValue::String(ref s) = a.value {
-                            activities.insert(s.clone());
+                // Extract the "concept:name" (activity name) if it exists
+                for attribute in event.attributes {
+                    if attribute.key == "concept:name" {
+                        if let AttributeValue::String(value) = &attribute.value {
+                            name = Some(value.clone());
                         }
                     }
-                })
+                }
+
+                if let Some(name) = name {
+                    activities.insert(name);
+                }
             }
-        });
-    });
+        }
+    }
+
     Some(activities)
 }
 
@@ -62,38 +106,28 @@ pub fn parse_into_traces(
     for trace in traces {
         let mut events: Vec<Event> = Vec::new();
 
-        for event in trace.events {
-            let mut name = None;
-            let mut date = None;
+        // first check if there is a lifecycle:transition with value complete anywhere in the trace
+        let has_complete = trace.events.iter().any(|event| {
+            event.attributes.iter().any(|a| {
+                a.key == "lifecycle:transition"
+                    && a.value == AttributeValue::String("complete".to_string())
+            })
+        });
 
-            // if event contains a key "lifecycle:transition" with value "complete", ignore otherwise
-            if event.attributes.iter().any(|a| {
+        for event in trace.events {
+            let (name, date) = extract_event_attributes(&event.attributes);
+
+            if !has_complete || event.attributes.iter().any(|a| {
                 a.key == "lifecycle:transition"
                     && a.value == AttributeValue::String("complete".to_string())
             }) {
-                for attribute in event.attributes {
-                    match attribute.key.as_str() {
-                        "concept:name" => {
-                            if let AttributeValue::String(value) = attribute.value {
-                                name = Some(value);
-                            }
-                        }
-                        "time:timestamp" => {
-                            if let AttributeValue::Date(value) = attribute.value {
-                                date = Some(value);
-                            }
-                        }
-                        _ => continue,
-                    }
-                }
-
                 if let (Some(name), Some(date)) = (name, date) {
                     events.push(Event::new(name, date));
                 }
             }
         }
 
-        events.sort_by(|a, b| a.date.cmp(&b.date)); // just in case the events are not sorted already
+        events.sort_by(|a, b| a.date.cmp(&b.date)); // sort events by date
 
         let activity_list: Vec<String> = events.into_iter().map(|event| event.activity).collect();
         result.push(activity_list);
@@ -159,4 +193,14 @@ mod tests {
         assert_eq!(result[&vec!["B", "C", "D"]], 2);
         assert_eq!(result[&vec!["E", "F", "G"]], 1);
     }
+
+//     #[test]
+//     fn test_failing_event_logs() {
+//         // let foo = parse_into_traces(Some("./sample-data/PrepaidTravelCost.xes"), None);
+//         // let foo = parse_into_traces(Some("./sample-data/RequestForPayment.xes"), None);
+//         // let foo = parse_into_traces(Some("./sample-data/BPI_Challenge_2013_incidents.xes"), None);
+//         let foo = parse_into_traces(Some("./sample-data/exercise2.xes"), None);
+//         println!("{:?}", foo);
+//         assert_eq!(2, 3);
+//     }
 }
