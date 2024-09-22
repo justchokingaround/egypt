@@ -1,6 +1,6 @@
 use egypt::{
     generate_adj_matrix_from_traces, generate_xes,
-    parser::{parse_into_traces, variants_of_traces},
+    parser::{parse_into_traces, variants_of_traces}, ExtendedPrefixAutomaton,
 };
 use wasm_bindgen::{closure::Closure, JsCast, JsValue, UnwrapThrowExt};
 use web_sys::{File, FileReader, HtmlAnchorElement, HtmlInputElement, HtmlTextAreaElement};
@@ -102,17 +102,46 @@ impl Component for App {
                                 let variants_per_traces =
                                     variants.len() as f64 / traces.len() as f64;
                                 let freq_over_variants = max_variant_frequency / variants.len() as f64;
+
+                                // NOTE: should probably also move this to lib.rs
+                                // Convert traces to the Event format required by ExtendedPrefixAutomaton
+                                let plain_log: Vec<Vec<egypt::Event>> = traces.clone()
+                                    .into_iter()
+                                    .enumerate()
+                                    .map(|(case_idx, trace)| {
+                                        trace
+                                            .into_iter()
+                                            .enumerate()
+                                            .map(|(event_idx, activity)| egypt::Event {
+                                                case: format!("case_{}", case_idx),
+                                                activity: activity.chars().next().unwrap(),
+                                                predecessor: if event_idx > 0 {
+                                                    Some(format!("case_{}", case_idx))
+                                                } else {
+                                                    None
+                                                },
+                                            })
+                                            .collect()
+                                    })
+                                    .collect();
+
+                                let epa = ExtendedPrefixAutomaton::build(plain_log);
+                                let variant_entropy = epa.variant_entropy();
+                                let normalized_variant_entropy = epa.normalized_variant_entropy();
+
                                 self.text = format!(
                                     "{}\n\n\
                                     #relations:                                     {:<10}\n\
-                                    #independence / #relations:                     {:<10}\n\
-                                    #temporal independence / #relations:            {:<10}\n\
-                                    max. frequency of variants / total #traces:     {:<10}\n\
-                                    #variants / total #traces:                      {:<10}\n\
+                                    #independence / #relations:                     {:<10.4}\n\
+                                    #temporal independence / #relations:            {:<10.4}\n\
+                                    max. frequency of variants / total #traces:     {:<10.4}\n\
+                                    #variants / total #traces:                      {:<10.4}\n\
                                     #(Eventual, <=>):                               {:<10}\n\
                                     #(Direct, <=>):                                 {:<10}\n\
                                     #variants:                                      {:<10}\n\
-                                    max. frequency of variants / #variants:         {:<10}\n",
+                                    max. frequency of variants / #variants:         {:<10.4}\n\
+                                    Variant Entropy:                                {:<10.4}\n\
+                                    Normalized Variant Entropy:                     {:<10.4}\n",
                                     adj_matrix,
                                     relations,
                                     independences_per_relations,
@@ -122,9 +151,12 @@ impl Component for App {
                                     eventual_equivalences,
                                     direct_equivalences,
                                     variants.len() as f64,
-                                    freq_over_variants
+                                    freq_over_variants,
+                                    variant_entropy,
+                                    normalized_variant_entropy
                                 );
                             }
+
                             Err(e) => {
                                 self.text = format!("Error parsing file: {}", e);
                             }
