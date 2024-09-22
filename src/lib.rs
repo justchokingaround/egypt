@@ -231,6 +231,7 @@ pub fn generate_adj_matrix_from_activities_and_traces(
                     Some(ed) => match ed.dependency_type {
                         dependency_types::existential::DependencyType::Equivalence => "equivalence",
                         dependency_types::existential::DependencyType::Implication => "implication",
+                        dependency_types::existential::DependencyType::NegatedEquivalence => "negated equivalence",
                         _ => "other",
                     },
                     None => "none",
