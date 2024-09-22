@@ -86,6 +86,7 @@ impl Component for App {
                                     eventual_equivalences,
                                     direct_equivalences,
                                     number_of_activities,
+                                    relationship_counts
                                 ) = generate_adj_matrix_from_traces(traces.clone());
                                 let relations = number_of_activities * number_of_activities;
                                 let independences_per_relations =
@@ -141,7 +142,8 @@ impl Component for App {
                                     #variants:                                      {:<10}\n\
                                     max. frequency of variants / #variants:         {:<10.4}\n\
                                     Variant Entropy:                                {:<10.4}\n\
-                                    Normalized Variant Entropy:                     {:<10.4}\n",
+                                    Normalized Variant Entropy:                     {:<10.4}\n\n\
+                                    Relationship Type Frequencies:\n{}",
                                     adj_matrix,
                                     relations,
                                     independences_per_relations,
@@ -153,7 +155,11 @@ impl Component for App {
                                     variants.len() as f64,
                                     freq_over_variants,
                                     variant_entropy,
-                                    normalized_variant_entropy
+                                    normalized_variant_entropy,
+                                    relationship_counts.iter()
+                                        .map(|(k, v)| format!("{}: {}", k, v))
+                                        .collect::<Vec<String>>()
+                                        .join("\n")
                                 );
                             }
 

@@ -163,7 +163,7 @@ pub fn generate_xes(text: &str) -> String {
     output
 }
 
-pub fn generate_adj_matrix_from_traces(traces: Vec<Vec<String>>) -> (String, usize, usize, usize, usize, usize) {
+pub fn generate_adj_matrix_from_traces(traces: Vec<Vec<String>>) -> (String, usize, usize, usize, usize, usize, HashMap<String, usize>) {
     let mut activities = HashSet::new();
 
     traces.iter().for_each(|trace| {
@@ -178,7 +178,7 @@ pub fn generate_adj_matrix_from_traces(traces: Vec<Vec<String>>) -> (String, usi
 pub fn generate_adj_matrix_from_activities_and_traces(
     activities: &HashSet<String>,
     traces: Vec<Vec<String>>,
-) -> (String, usize, usize, usize, usize, usize) {
+) -> (String, usize, usize, usize, usize, usize, HashMap<String, usize>) {
     let max_dependency_width = 15;
 
     let mut output = String::with_capacity(activities.len() * activities.len() * 20);
@@ -186,6 +186,7 @@ pub fn generate_adj_matrix_from_activities_and_traces(
     let mut pure_existences = 0;
     let mut eventual_equivalences = 0;
     let mut direct_equivalences = 0;
+    let mut relationship_counts = HashMap::new();
 
     // Header
     output.push_str(&format!("{:<15}", " "));
@@ -219,6 +220,24 @@ pub fn generate_adj_matrix_from_activities_and_traces(
                     existential_dependency.clone(),
                 );
 
+                let temporal_type = match &temporal_dependency {
+                    Some(td) => match td.dependency_type {
+                        dependency_types::temporal::DependencyType::Eventual => "eventual",
+                        dependency_types::temporal::DependencyType::Direct => "direct",
+                    },
+                    None => "none",
+                };
+                let existential_type = match &existential_dependency {
+                    Some(ed) => match ed.dependency_type {
+                        dependency_types::existential::DependencyType::Equivalence => "equivalence",
+                        dependency_types::existential::DependencyType::Implication => "implication",
+                        _ => "other",
+                    },
+                    None => "none",
+                };
+                let relationship_type = format!("({}, {})", temporal_type, existential_type);
+                *relationship_counts.entry(relationship_type).or_insert(0) += 1;
+
                 if temporal_dependency.is_none() {
                     pure_existences += 1;
                     if existential_dependency.is_none() {
@@ -245,7 +264,7 @@ pub fn generate_adj_matrix_from_activities_and_traces(
         output.push('\n');
     }
 
-    (output, full_independences, pure_existences, eventual_equivalences, direct_equivalences, activities.len())
+    (output, full_independences, pure_existences, eventual_equivalences, direct_equivalences, activities.len(), relationship_counts)
 }
 
 pub fn get_activities_and_traces(text: &str) -> (Vec<String>, Vec<Vec<&str>>) {
